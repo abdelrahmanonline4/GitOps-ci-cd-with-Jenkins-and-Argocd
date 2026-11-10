@@ -1,10 +1,11 @@
+
 pipeline {
     agent any
 
     environment {
-        DOCKER_CREDENTIALS_ID = 'Dockerhub-cred'
-        IMAGE_REPO = "3booda24/nodejs8"
-        IMAGE_TAG  = "latest"
+        IMAGE_REPO = '3booda24/nodejs8'
+        IMAGE_TAG = 'latest'
+        CONTAINER_NAME = 'nodejs-container'
     }
 
     stages {
@@ -17,52 +18,81 @@ pipeline {
 
         stage('Docker Login') {
             steps {
-                script {
-                    echo 'Logging in to Docker Hub...'
-
-                    docker.withRegistry(
-                        'https://index.docker.io/v1/',
-                        "${DOCKER_CREDENTIALS_ID}"
-                    ) {
-                        echo 'Login successful'
-                    }
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'Dockerhub-cred',
+                        usernameVariable: 'DOCKER_USERNAME',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )
+                ]) {
+                    sh '''
+                        echo "Logging in to Docker Hub..."
+                        echo "$DOCKER_PASSWORD" | docker login \
+                            -u "$DOCKER_USERNAME" \
+                            --password-stdin
+                    '''
                 }
             }
         }
 
-        stage('Build Image') {
-            steps {
-                script {
-                    echo 'Building Docker image...'
-
-                    docker.build("${IMAGE_REPO}:${IMAGE_TAG}")
-                }
-            }
-        }
-
-        stage('Push Image') {
-            steps {
-                script {
-                    echo 'Pushing image to Docker Hub...'
-
-                    docker.withRegistry(
-                        'https://index.docker.io/v1/',
-                        "${DOCKER_CREDENTIALS_ID}"
-                    ) {
-                        def app = docker.image("${IMAGE_REPO}:${IMAGE_TAG}")
-                        app.push()
-                    }
-                }
-            }
-        }
-
-        stage('CD - Deploy to Kubernetes') {
+        stage('Build Docker Image') {
             steps {
                 sh '''
-                    cd kubernetes
-                    kubectl apply -f .
+                    echo "Building Docker Image..."
+                    docker build -t ${IMAGE_REPO}:${IMAGE_TAG} .
                 '''
             }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                sh '''
+                    echo "Pushing Docker Image..."
+                    docker push ${IMAGE_REPO}:${IMAGE_TAG}
+                '''
+            }
+        }
+
+        stage('Remove Old Container') {
+            steps {
+                sh '''
+                    echo "Removing Old Container..."
+                    docker rm -f ${CONTAINER_NAME} || true
+                '''
+            }
+        }
+
+        stage('Deploy New Container') {
+            steps {
+                sh '''
+                    echo "Deploying Docker Container..."
+
+                    docker run -d \
+                        --name ${CONTAINER_NAME} \
+                        --restart unless-stopped \
+                        -p 3000:3000 \
+                        ${IMAGE_REPO}:${IMAGE_TAG}
+                '''
+            }
+        }
+
+        stage('Verify Container') {
+            steps {
+                sh '''
+                    echo "Verifying Container..."
+                    docker ps --filter "name=${CONTAINER_NAME}"
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'CI/CD Pipeline Completed Successfully!'
+        }
+
+        failure {
+            echo 'CI/CD Pipeline Failed!'
         }
     }
 }
