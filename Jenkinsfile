@@ -53,6 +53,18 @@ pipeline {
             }
         }
 
+        stage('Approval Gate') {
+            steps {
+                timeout(time: 10, unit: 'MINUTES') {
+                    input(
+                        message: 'Approve Deployment to Production?',
+                        ok: 'Deploy Now',
+                        submitter: 'admin'
+                    )
+                }
+            }
+        }
+
         stage('Remove Old Container') {
             steps {
                 sh '''
@@ -93,6 +105,10 @@ pipeline {
 
         failure {
             echo 'CI/CD Pipeline Failed!'
+        }
+
+        aborted {
+            echo 'Deployment Cancelled or Approval Timed Out!'
         }
     }
 }
