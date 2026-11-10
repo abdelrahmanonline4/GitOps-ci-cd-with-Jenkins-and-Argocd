@@ -18,3 +18,4 @@ EXPOSE 3000
 ##############3
 #Start server
 CMD ["npm", "start"]
+###
