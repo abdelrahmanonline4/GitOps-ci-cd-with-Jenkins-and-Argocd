@@ -5,7 +5,6 @@ pipeline {
     environment {
         IMAGE_REPO = '3booda24/nodejs8'
         IMAGE_TAG = 'latest'
-        CONTAINER_NAME = 'nodejs-container'
     }
 
     stages {
@@ -26,7 +25,6 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        echo "Logging in to Docker Hub..."
                         echo "$DOCKER_PASSWORD" | docker login \
                             -u "$DOCKER_USERNAME" \
                             --password-stdin
@@ -38,7 +36,6 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh '''
-                    echo "Building Docker Image..."
                     docker build -t ${IMAGE_REPO}:${IMAGE_TAG} .
                 '''
             }
@@ -47,7 +44,6 @@ pipeline {
         stage('Push Docker Image') {
             steps {
                 sh '''
-                    echo "Pushing Docker Image..."
                     docker push ${IMAGE_REPO}:${IMAGE_TAG}
                 '''
             }
@@ -57,7 +53,7 @@ pipeline {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
                     input(
-                        message: 'Approve Deployment to Production?',
+                        message: 'Approve Deployment to Kubernetes?',
                         ok: 'Deploy Now',
                         submitter: 'admin'
                     )
@@ -65,34 +61,11 @@ pipeline {
             }
         }
 
-        stage('Remove Old Container') {
+        stage('Deploy to Kubernetes') {
             steps {
                 sh '''
-                    echo "Removing Old Container..."
-                    docker rm -f ${CONTAINER_NAME} || true
-                '''
-            }
-        }
-
-        stage('Deploy New Container') {
-            steps {
-                sh '''
-                    echo "Deploying Docker Container..."
-
-                    docker run -d \
-                        --name ${CONTAINER_NAME} \
-                        --restart unless-stopped \
-                        -p 3000:3000 \
-                        ${IMAGE_REPO}:${IMAGE_TAG}
-                '''
-            }
-        }
-
-        stage('Verify Container') {
-            steps {
-                sh '''
-                    echo "Verifying Container..."
-                    docker ps --filter "name=${CONTAINER_NAME}"
+                    cd kubernetes
+                    kubectl apply -f .
                 '''
             }
         }
